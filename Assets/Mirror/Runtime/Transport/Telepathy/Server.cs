@@ -180,7 +180,8 @@ namespace Telepathy
         public bool Start(int port)
         {
             // not if already started
-            if (Active) return false;
+            if (Active)
+                return false;
 
             // clear old messages in queue, just to be sure that the caller
             // doesn't receive data from last time and gets out of sync.
@@ -202,7 +203,8 @@ namespace Telepathy
         public void Stop()
         {
             // only if started
-            if (!Active) return;
+            if (!Active)
+                return;
 
             Logger.Log("Server: stopping...");
 
@@ -230,6 +232,10 @@ namespace Telepathy
 
             // clear clients list
             clients.Clear();
+
+            // reset the counter in case we start up again so
+            // clients get connection ID's starting from 1
+            counter = 0;
         }
 
         // send message to client using socket connection.
@@ -246,10 +252,16 @@ namespace Telepathy
                     // calling Send here would be blocking (sometimes for long times
                     // if other side lags or wire was disconnected)
                     token.sendQueue.Enqueue(data);
-                    token.sendPending.Set(); // interrupt SendThread WaitOne()
+                    // interrupt SendThread WaitOne()
+                    token.sendPending.Set();
                     return true;
                 }
-                Logger.Log("Server.Send: invalid connectionId: " + connectionId);
+                // sending to an invalid connectionId is expected sometimes.
+                // for example, if a client disconnects, the server might still
+                // try to send for one frame before it calls GetNextMessages
+                // again and realizes that a disconnect happened.
+                // so let's not spam the console with log messages.
+                //Logger.Log("Server.Send: invalid connectionId: " + connectionId);
                 return false;
             }
             Logger.LogError("Client.Send: message too big: " + data.Length + ". Limit: " + MaxMessageSize);

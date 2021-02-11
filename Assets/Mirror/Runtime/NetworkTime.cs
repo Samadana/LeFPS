@@ -9,6 +9,8 @@ namespace Mirror
     /// </summary>
     public static class NetworkTime
     {
+        static readonly ILogger logger = LogFactory.GetLogger(typeof(NetworkTime));
+
         /// <summary>
         /// how often are we sending ping messages
         /// used to calculate network time and RTT
@@ -21,7 +23,6 @@ namespace Mirror
         public static int PingWindowSize = 10;
 
         static double lastPingTime;
-
 
         // Date and time when the application started
         static readonly Stopwatch stopwatch = new Stopwatch();
@@ -57,7 +58,7 @@ namespace Mirror
             if (Time.time - lastPingTime >= PingFrequency)
             {
                 NetworkPingMessage pingMessage = new NetworkPingMessage(LocalTime());
-                NetworkClient.Send(pingMessage);
+                NetworkClient.Send(pingMessage, Channels.DefaultUnreliable);
                 lastPingTime = Time.time;
             }
         }
@@ -67,7 +68,7 @@ namespace Mirror
         // and time from the server
         internal static void OnServerPing(NetworkConnection conn, NetworkPingMessage msg)
         {
-            if (LogFilter.Debug) Debug.Log("OnPingServerMessage  conn=" + conn);
+            if (logger.LogEnabled()) logger.Log("OnPingServerMessage  conn=" + conn);
 
             NetworkPongMessage pongMsg = new NetworkPongMessage
             {
@@ -75,13 +76,13 @@ namespace Mirror
                 serverTime = LocalTime()
             };
 
-            conn.Send(pongMsg);
+            conn.Send(pongMsg, Channels.DefaultUnreliable);
         }
 
         // Executed at the client when we receive a Pong message
         // find out how long it took since we sent the Ping
         // and update time offset
-        internal static void OnClientPong(NetworkConnection _, NetworkPongMessage msg)
+        internal static void OnClientPong(NetworkPongMessage msg)
         {
             double now = LocalTime();
 
@@ -115,25 +116,15 @@ namespace Mirror
         /// <summary>
         /// The time in seconds since the server started.
         /// </summary>
-        /// <remarks>
-        /// 
-        /// <para>Note this value works in the client and the server
-        /// the value is synchronized accross the network with high accuracy</para>
-        ///
-        /// <para>You should not cast this down to a float because the it loses too much accuracy
-        /// when the server is up for a while</para>
-        /// <para>I measured the accuracy of float and I got this:</para>
-        /// <list type="bullet">
-        /// <item>for the same day,  accuracy is better than 1 ms</item>
-        /// <item>after 1 day,  accuracy goes down to 7 ms</item>
-        /// <item>after 10 days, accuracy is 61 ms</item>
-        /// <item>after 30 days , accuracy is 238 ms</item>
-        /// <item>after 60 days, accuracy is 454 ms</item>
-        /// </list>
-        /// 
-        /// <para>in other words,  if the server is running for 2 months,
-        /// and you cast down to float,  then the time will jump in 0.4s intervals.</para>
-        /// </remarks>
+        //
+        // I measured the accuracy of float and I got this:
+        // for the same day,  accuracy is better than 1 ms
+        // after 1 day,  accuracy goes down to 7 ms
+        // after 10 days, accuracy is 61 ms
+        // after 30 days , accuracy is 238 ms
+        // after 60 days, accuracy is 454 ms
+        // in other words,  if the server is running for 2 months,
+        // and you cast down to float,  then the time will jump in 0.4s intervals.
         public static double time => LocalTime() - _offset.Value;
 
         /// <summary>

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Threading;
@@ -71,16 +71,24 @@ namespace Telepathy
             {
                 // this happens if (for example) the ip address is correct
                 // but there is no server running on that ip/port
-                Logger.Log("Client Recv: failed to connect to ip=" + ip + " port=" + port + " reason=" + exception);
+                Logger.LogError($"Client Recv: failed to connect to ip={ip} port={port} reason={exception}");
 
                 // add 'Disconnected' event to message queue so that the caller
                 // knows that the Connect failed. otherwise they will never know
                 receiveQueue.Enqueue(new Message(0, EventType.Disconnected, null));
             }
+            catch (ThreadInterruptedException)
+            {
+                // expected if Disconnect() aborts it
+            }
+            catch (ThreadAbortException)
+            {
+                // expected if Disconnect() aborts it
+            }
             catch (Exception exception)
             {
                 // something went wrong. probably important.
-                Logger.LogError("Client Recv Exception: " + exception);
+                Logger.LogError($"Client Recv Exception: {exception}");
             }
 
             // sendthread might be waiting on ManualResetEvent,
@@ -98,13 +106,17 @@ namespace Telepathy
             // if we got here then we are done. ReceiveLoop cleans up already,
             // but we may never get there if connect fails. so let's clean up
             // here too.
-            client.Close();
+            client?.Close();
         }
 
         public void Connect(string ip, int port)
         {
             // not if already started
-            if (Connecting || Connected) return;
+            if (Connecting || Connected)
+            {
+                Logger.LogWarning("Telepathy Client can not create connection because an existing connection is connecting or connected");
+                return;
+            }
 
             // We are connecting from now until Connect succeeds or fails
             _Connecting = true;
@@ -124,8 +136,10 @@ namespace Telepathy
             // => the trick is to clear the internal IPv4 socket so that Connect
             //    resolves the hostname and creates either an IPv4 or an IPv6
             //    socket as needed (see TcpClient source)
-            client = new TcpClient(); // creates IPv4 socket
-            client.Client = null; // clear internal IPv4 socket until Connect()
+            // creates IPv4 socket
+            client = new TcpClient();
+            // clear internal IPv4 socket until Connect()
+            client.Client = null;
 
             // clear old messages in queue, just to be sure that the caller
             // doesn't receive data from last time and gets out of sync.
@@ -155,7 +169,13 @@ namespace Telepathy
 
                 // wait until thread finished. this is the only way to guarantee
                 // that we can call Connect() again immediately after Disconnect
-                receiveThread?.Join();
+                // -> calling .Join would sometimes wait forever, e.g. when
+                //    calling Disconnect while trying to connect to a dead end
+                receiveThread?.Interrupt();
+
+                // we interrupted the receive Thread, so we can't guarantee that
+                // connecting was reset. let's do it manually.
+                _Connecting = false;
 
                 // clear send queues. no need to hold on to them.
                 // (unlike receiveQueue, which is still needed to process the
@@ -179,10 +199,11 @@ namespace Telepathy
                     // calling Send here would be blocking (sometimes for long times
                     // if other side lags or wire was disconnected)
                     sendQueue.Enqueue(data);
-                    sendPending.Set(); // interrupt SendThread WaitOne()
+                    // interrupt SendThread WaitOne()
+                    sendPending.Set();
                     return true;
                 }
-                Logger.LogError("Client.Send: message too big: " + data.Length + ". Limit: " + MaxMessageSize);
+                Logger.LogError($"Client.Send: message too big: {data.Length}. Limit: {MaxMessageSize}");
                 return false;
             }
             Logger.LogWarning("Client.Send: not connected!");

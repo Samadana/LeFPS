@@ -1,89 +1,45 @@
-﻿using Mirror;
-using UnityEngine;
+﻿using UnityEngine;
 
-public class PlayerController : NetworkBehaviour
+[RequireComponent(typeof(PlayerMotor))]
+public class PlayerController : MonoBehaviour
 {
-    public TextMesh playerNameText;
-    public GameObject floatingInfo;
-    public Transform GFX;
-    public Rigidbody RigidBody;
-    public float speedMovement = 10f;
-    public float speedRotation = 100f;
-    Camera Cam;
+    [SerializeField]
+    private float speed = 3f;
 
-    private Material playerMaterialClone;
+    [SerializeField]
+    private float mouseSensitivityX = 3f;
 
-    [SyncVar(hook = nameof(OnNameChanged))]
-    public string playerName;
+    [SerializeField]
+    private float mouseSensitivityY = 3f;
 
-    [SyncVar(hook = nameof(OnColorChanged))]
-    public Color playerColor = Color.white;
+    private PlayerMotor motor;
 
-    void Update()
+    private void Start()
     {
-        if (!isLocalPlayer)
-        {
-            // make non-local players run this
-            floatingInfo.transform.LookAt(Camera.main.transform);
-            return;
-        }        
-        
-
-        if (Input.GetMouseButtonDown(0))
-        {
-            Ray ray = Cam.ScreenPointToRay(Input.mousePosition);
-            RaycastHit hit;
-
-            if (Physics.Raycast(ray, out hit, 100))
-            {
-                Debug.Log("We hit " + hit.collider.name + " " + hit.point);
-
-            }
-        }
-
-        float moveX = Input.GetAxis("Horizontal") * Time.deltaTime * speedRotation;
-        float moveZ = Input.GetAxis("Vertical") * Time.deltaTime * speedMovement;
-
-        transform.Rotate(0, moveX, 0);
-        transform.Translate(0, 0, moveZ);
+        motor = GetComponent<PlayerMotor>();
     }
 
-    void OnNameChanged(string _New )
+    private void Update()
     {
-        Debug.Log("On Name Change");
-        playerNameText.text = _New;
+        // Calculer la vélocité (vitesse) du mouvement de notre joueur
+        float xMov = Input.GetAxisRaw("Horizontal");
+        float zMov = Input.GetAxisRaw("Vertical");
+
+        Vector3 moveHorizontal = transform.right * xMov;
+        Vector3 moveVertical = transform.forward * zMov;
+
+        Vector3 velocity = (moveHorizontal + moveVertical).normalized * speed;
+
+        motor.Move(velocity);
+
+        // On calcule la rotation du joueur en un Vector3
+        float yRot = Input.GetAxisRaw("MouseX");
+        Vector3 rotation = new Vector3(0, yRot, 0) * mouseSensitivityX;
+        motor.Rotate(rotation);
+
+        // On calcule la rotation de la camera en un Vector3
+        float xRot = Input.GetAxisRaw("MouseY");
+        Vector3 cameraRotation = new Vector3(xRot, 0, 0) * mouseSensitivityY;
+        motor.RotateCamera(cameraRotation);
     }
-
-    void OnColorChanged(Color _New)
-    {
-        playerNameText.color = _New;
-        playerMaterialClone = new Material(GFX.GetComponent<Renderer>().material);
-        playerMaterialClone.color = _New;
-        GFX.GetComponent<Renderer>().material = playerMaterialClone;
-    }
-
-    public override void OnStartLocalPlayer()
-    {
-        Cam = Camera.main;
-        Camera.main.transform.SetParent(transform);
-        Camera.main.transform.localPosition = new Vector3(0, 4f, -6f);
-        Camera.main.transform.rotation = Quaternion.Euler(20f, 0, 0);
-
-        floatingInfo.transform.localPosition = new Vector3(0, 1.3f, 0f);
-        floatingInfo.transform.localScale = new Vector3(0.1f, 0.1f, 0.1f);
-
-        string name = "Player" + Random.Range(100, 999);
-        Color color = new Color(Random.Range(0f, 1f), Random.Range(0f, 1f), Random.Range(0f, 1f));
-        CmdSetupPlayer(name, color);
-    }
-
-    [Command]
-    public void CmdSetupPlayer(string _name, Color _col)
-    {
-        Debug.Log("Player want change name and color");
-        // player info sent to server, then server updates sync vars which handles it on all clients
-        playerName = _name;
-        playerColor = _col;
-    }    
-  
 }
