@@ -11,6 +11,9 @@ public class PlayerShoot : NetworkBehaviour
     [SerializeField]
     private LayerMask mask;
 
+    [SerializeField]
+    private Animator anim;
+
     // Start is called before the first frame update
     void Start()
     {
@@ -28,6 +31,8 @@ public class PlayerShoot : NetworkBehaviour
     [Client]
     private void Shoot()
     {
+        //anim.SetTrigger("Shoot");
+        anim.Play("Shooting", -1, 0f);
         RaycastHit hit;
 
         if (Physics.Raycast(cam.transform.position, cam.transform.forward, out hit, weapon.range, mask))
